@@ -80,7 +80,7 @@ response_colname <- "body_mass"
 response <- "mass"
 ####### Helgeland islands:
 isls <- c(20, 22, 23, 24, 26, 27, 28, 33, 331, 332, 34, 35, 38)
-sys_name = "helgeland"
+sys_name <- "helgeland"
 ####### Southern islands:
 # isls <- c(60, 61, 63, 67, 68),
 # sys_name <- "southern"
@@ -158,12 +158,12 @@ gam_effect_strs <-
 # ---- Priors ----
 # Specify priors for random effect variances. We use a Penalized Complexity (PC)
 # prior.
-prior = (pheno_data %>%
-           getElement("y") %>%
-           var() %>%
-           make_prior(pc_prec_upper_var = . / 3,
-                      var_init = . / 5,
-                      tau = 0.05))
+prior <- (pheno_data %>%
+            getElement("y") %>%
+            var() %>%
+            make_prior(pc_prec_upper_var = . / 3,
+                       var_init = . / 5,
+                       tau = 0.05))
 # By default INLA uses N(0, 10^4) priors for fixed effect coefficients
 
 # ---- Fit the Genomic Animal Model (GAM) ----
@@ -205,13 +205,13 @@ cv_test_sets <- make_cv_test_sets(analysis_inds = unique(pheno_data$ringnr),
                                   num_folds = 10)
 
 # New prior (not using information from test set)
-prior_cv = (pheno_data %>%
-              dplyr::filter(!ringnr %in% cv_test_sets[[1]]) %>%
-              getElement("y") %>%
-              var() %>%
-              make_prior(pc_prec_upper_var = . / 3,
-                         var_init = . / 5,
-                         tau = 0.05))
+prior_cv <- (pheno_data %>%
+               dplyr::filter(!ringnr %in% cv_test_sets[[1]]) %>%
+               getElement("y") %>%
+               var() %>%
+               make_prior(pc_prec_upper_var = . / 3,
+                          var_init = . / 5,
+                          tau = 0.05))
 
 # Run a genomic prediction for one of the folds in the CV. You can make a
 # for-loop do the full CV, but it will be very slow if using the full data set.
