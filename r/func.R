@@ -19,7 +19,7 @@ do_qc <- function(fam_file,
   # Extract filepath without ".fam"
   file_root <- gsub(pattern = ".fam", replacement = "", x = fam_file)
   # Specify directory where files will be stored
-  dir <- paste0("Data/qc", "_", resp, "_", sys)
+  dir <- paste0("data/qc", "_", resp, "_", sys)
   # Load fam file
   fam <- fread(fam_file, select = c(1, 2), data.table = FALSE, header = FALSE)
   # Specify which individuals in fam file we want to keep
@@ -134,7 +134,7 @@ make_raw_grm <- function(analysis_inds,
                          geno_set,
                          rel_cutoff = 1 - 1e-8) {
 
-  dir <- paste0("Data/grm_", response, "_", geno_set)
+  dir <- paste0("data/grm_", response, "_", geno_set)
 
   if (!is.null(train_islands)) {
     dir <- paste0(dir, "_train", train_islands$code)
