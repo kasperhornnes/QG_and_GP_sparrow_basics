@@ -16,13 +16,13 @@ library(MCMCglmm)
 library(HDInterval)
 # ---- Data paths ----
 # File path to morphological phenotype data
-pheno_file <- "Data/AdultMorphology_20240201_fix.csv"
+pheno_file <- "data/AdultMorphology_20241117.csv"
 # Check if file exist
 stopifnot(file.exists(pheno_file))
 
 # File paths to genomic data
 orig_geno_files <-
-  paste0("Data/combined_200k_70k_sparrow_genotype_data/",
+  paste0("data/combined_200k_70k_sparrow_genotype_data/",
          "combined_200k_70k_helgeland_south_corrected_snpfiltered_2024-02-05",
          c(".map", ".ped", ".fam", ".bim", ".bed"))
 # Check if files exist
