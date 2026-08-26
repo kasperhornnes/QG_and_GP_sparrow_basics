@@ -10,6 +10,7 @@
 # ---- Packages necesarry to run this script ----
 library(INLA) # Cannot be installed from CRAN, for install instructions for your
 # system see: https://www.r-inla.org/download-install
+#install.packages("INLA", repos=c(getOption("repos"), INLA="https://inla.r-inla-download.org/R/stable"), dep=TRUE)
 library(dplyr)
 library(data.table)
 library(MCMCglmm)
@@ -39,6 +40,8 @@ get_plink_path <- function() {
 }
 # Check if program file exists
 stopifnot(file.exists(get_plink_path()))
+
+list.files("PLINK")
 
 # ----  Load some utility functions ----
 # Some details are deliberately hidden away inside these functions, so if you
