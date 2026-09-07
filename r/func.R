@@ -296,3 +296,38 @@ extract_stats <- function(post_sample) {
   hpd_upper <- hdi(post_sample)["upper"]
   lst(mean, mode, median, sd, var, hpd_lower, hpd_upper)
 }
+
+
+run_gp_time <- function(pheno_data,
+                        train_rows,
+                        test_rows,
+                        inverse_relatedness_matrix = NULL,
+                        effects_vec,
+                        prior,
+                        verbose = TRUE,
+                        control.compute.config = TRUE
+) {
+
+  keep_rows <- train_rows | test_rows
+  new_data <- pheno_data[keep_rows, ]
+
+  new_data$y_na <- new_data$y
+  new_data$y_na[test_rows[keep_rows]] <- NA
+
+  inla_formula <- stats::reformulate(effects_vec, response = "y_na")
+
+  model <- INLA::inla(inla_formula,
+             family = "gaussian",
+             data = new_data,
+             verbose = verbose,
+             control.compute = list(config = control.compute.config),
+             control.family = list(hyper = prior$hyperpar_var)) %>%
+    INLA::inla.rerun() %>%
+    INLA::inla.rerun()
+
+  list(
+    model = model,
+    data = new_data,
+    test_rows = which(new_data$year_num == unique(pheno_data$year_num[test_rows]))
+  )
+}
