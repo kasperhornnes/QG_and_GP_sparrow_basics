@@ -2,6 +2,13 @@
 # Utility functions
 # =============================================================================
 
+
+#plink
+get_plink_path <- function() {
+  "PLINK/plink"
+}
+
+
 # gets iid from .fam
 get_genotyped_inds <- function(fam_file,
                                sel = 2 # 1: fid; 2: iid
@@ -298,36 +305,43 @@ extract_stats <- function(post_sample) {
 }
 
 
-run_gp_time <- function(pheno_data,
-                        train_rows,
-                        test_rows,
-                        inverse_relatedness_matrix = NULL,
-                        effects_vec,
-                        prior,
-                        verbose = TRUE,
-                        control.compute.config = TRUE
+run_gp_cutoff <- function(
+    pheno_data,
+    cutoff_year,
+    inverse_relatedness_matrix,
+    effects_vec,
+    prior,
+    verbose = TRUE,
+    control.compute.config = FALSE
 ) {
 
-  keep_rows <- train_rows | test_rows
-  new_data <- pheno_data[keep_rows, ]
+  train_rows <- pheno_data$year_num <= cutoff_year
 
-  new_data$y_na <- new_data$y
-  new_data$y_na[test_rows[keep_rows]] <- NA
+  data_model <- pheno_data[train_rows, ]
 
-  inla_formula <- stats::reformulate(effects_vec, response = "y_na")
+  data_model$y_na <- data_model$y
 
-  model <- INLA::inla(inla_formula,
-             family = "gaussian",
-             data = new_data,
-             verbose = verbose,
-             control.compute = list(config = control.compute.config),
-             control.family = list(hyper = prior$hyperpar_var)) %>%
-    INLA::inla.rerun() %>%
-    INLA::inla.rerun()
+  inla_formula <- stats::reformulate(
+    effects_vec,
+    response = "y_na"
+  )
+
+  model <- INLA::inla(
+    inla_formula,
+    family = "gaussian",
+    data = data_model,
+    verbose = verbose,
+    control.compute = list(
+      config = control.compute.config
+    ),
+    control.family = list(
+      hyper = prior$hyperpar_var
+    )
+  ) #%>% INLA::inla.rerun() %>%INLA::inla.rerun()
 
   list(
     model = model,
-    data = new_data,
-    test_rows = which(new_data$year_num == unique(pheno_data$year_num[test_rows]))
+    data = data_model,
+    cutoff_year = cutoff_year
   )
 }
