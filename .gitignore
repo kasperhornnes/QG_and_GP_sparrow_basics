@@ -2,3 +2,22 @@
 .Rhistory
 .RData
 .Ruserdata
+
+# R session files
+.RData
+.RDataTmp*
+.Rhistory
+.Rproj.user/
+
+# macOS
+.DS_Store
+
+# Large/private data
+data/
+
+# Cached models/results
+results/cache/
+results/models/
+
+# External software
+PLINK/

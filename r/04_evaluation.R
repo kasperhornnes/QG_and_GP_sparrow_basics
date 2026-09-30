@@ -123,20 +123,12 @@ safe_cor <- function(x, y) {
   )
 }
 
-
-
 evaluate_temporal_model <- function(
     fit,
     pheno_data,
-    horizon,
+    target_year,
     method = NULL
 ) {
-
-  cutoff_year <- fit$cutoff_year
-
-  target_year <-
-    cutoff_year + horizon
-
 
   # ---------------------------------------------------------------------------
   # 1. Determine model type
@@ -146,7 +138,9 @@ evaluate_temporal_model <- function(
 
     if (!is.null(fit$method)) {
 
-      method <- toupper(fit$method)
+      method <- toupper(
+        fit$method
+      )
 
     } else if (!is.null(fit$Z_pc)) {
 
@@ -160,20 +154,33 @@ evaluate_temporal_model <- function(
 
 
   # ---------------------------------------------------------------------------
-  # 2. Birds used for training
+  # 2. Check temporal ordering
   # ---------------------------------------------------------------------------
 
-  training_birds <- unique(
-    pheno_data$ringnr[
-      pheno_data$year_num <= cutoff_year
-    ]
-  )
+  if (is.null(fit$train_years)) {
+    stop(
+      "Fit does not contain train_years. ",
+      "The model may have been fitted with the old code."
+    )
+  }
+
+  if (any(fit$train_years >= target_year)) {
+    stop(
+      "For prospective temporal prediction, all training years ",
+      "must be earlier than the target year."
+    )
+  }
 
 
   # ---------------------------------------------------------------------------
-  # 3. Target-year phenotypes
-  #
-  # Average repeated measurements within bird.
+  # 3. Birds actually used for training
+  # ---------------------------------------------------------------------------
+
+  training_birds <- fit$training_birds
+
+
+  # ---------------------------------------------------------------------------
+  # 4. Target-year phenotype
   # ---------------------------------------------------------------------------
 
   target_data <-
@@ -207,7 +214,7 @@ evaluate_temporal_model <- function(
 
 
   # ---------------------------------------------------------------------------
-  # 4. Extract predicted breeding values
+  # 5. Extract predicted breeding values
   # ---------------------------------------------------------------------------
 
   bv <- extract_breeding_values(
@@ -217,7 +224,7 @@ evaluate_temporal_model <- function(
 
 
   # ---------------------------------------------------------------------------
-  # 5. Match phenotype and BV
+  # 6. Match phenotype and breeding value
   # ---------------------------------------------------------------------------
 
   predictions <-
@@ -233,15 +240,17 @@ evaluate_temporal_model <- function(
 
       method = method,
 
-      cutoff_year = cutoff_year,
-
       target_year = target_year,
 
-      horizon = horizon
+      last_training_year =
+        fit$last_training_year,
+
+      years_since_last_training =
+        target_year -
+        fit$last_training_year
     )
 
 
-  # Check prediction availability
   if (anyNA(predictions$bv)) {
 
     warning(
@@ -252,7 +261,7 @@ evaluate_temporal_model <- function(
 
 
   # ---------------------------------------------------------------------------
-  # 6. Prediction accuracy
+  # 7. Prediction accuracy
   # ---------------------------------------------------------------------------
 
   accuracy_overall <- safe_cor(
@@ -282,20 +291,30 @@ evaluate_temporal_model <- function(
 
 
   # ---------------------------------------------------------------------------
-  # 7. Summary
+  # 8. Summary
   # ---------------------------------------------------------------------------
 
   summary <- data.frame(
 
     method = method,
 
-    cutoff_year = cutoff_year,
-
-    horizon = horizon,
-
     target_year = target_year,
 
-    n_target = nrow(predictions),
+    last_training_year =
+      fit$last_training_year,
+
+    years_since_last_training =
+      target_year -
+      fit$last_training_year,
+
+    n_training_obs =
+      fit$n_training_obs,
+
+    n_training_birds =
+      fit$n_training_birds,
+
+    n_target =
+      nrow(predictions),
 
     n_seen = sum(
       predictions$seen_before
@@ -327,26 +346,24 @@ evaluate_temporal_model <- function(
   )
 }
 
-
 # =============================================================================
 # Evaluate several horizons
 # =============================================================================
-
-evaluate_horizons <- function(
+evaluate_target_years <- function(
     fit,
     pheno_data,
-    horizons = c(1, 2, 3, 5, 10),
+    target_years,
     method = NULL
 ) {
 
   evaluations <- lapply(
-    horizons,
-    function(h) {
+    target_years,
+    function(year) {
 
       evaluate_temporal_model(
         fit = fit,
         pheno_data = pheno_data,
-        horizon = h,
+        target_year = year,
         method = method
       )
     }
@@ -372,5 +389,244 @@ evaluate_horizons <- function(
   list(
     summary = summary,
     predictions = predictions
+  )
+}
+
+
+
+calculate_temporal_relatedness <- function(
+    pheno_data,
+    grm,
+    cutoff_year
+) {
+
+  # ---------------------------------------------------------------------------
+  # Training individuals
+  # ---------------------------------------------------------------------------
+
+  training_ids <- unique(
+    pheno_data$id1[
+      pheno_data$year_num <= cutoff_year
+    ]
+  )
+
+  training_birds <- unique(
+    pheno_data$ringnr[
+      pheno_data$year_num <= cutoff_year
+    ]
+  )
+
+
+  # ---------------------------------------------------------------------------
+  # Future years
+  # ---------------------------------------------------------------------------
+
+  future_years <- sort(
+    unique(
+      pheno_data$year_num[
+        pheno_data$year_num > cutoff_year
+      ]
+    )
+  )
+
+
+  # ---------------------------------------------------------------------------
+  # Calculate train-target relatedness for each year
+  # ---------------------------------------------------------------------------
+
+  results <- lapply(
+    future_years,
+    function(target_year) {
+
+      target_data <- pheno_data |>
+        dplyr::filter(
+          year_num == target_year,
+          !(ringnr %in% training_birds)
+        ) |>
+        dplyr::distinct(
+          ringnr,
+          id1
+        )
+
+      target_ids <- target_data$id1
+
+
+      # Need target birds
+      if (length(target_ids) == 0) {
+
+        return(
+          data.frame(
+            target_year = target_year,
+            n_target = 0,
+            mean_relatedness = NA_real_,
+            sd_relatedness = NA_real_,
+            var_relatedness = NA_real_,
+            precision_relatedness = NA_real_
+          )
+        )
+      }
+
+
+      # GRM row/column names are id1
+      train_idx <- match(
+        as.character(training_ids),
+        rownames(grm)
+      )
+
+      target_idx <- match(
+        as.character(target_ids),
+        colnames(grm)
+      )
+
+
+      if (anyNA(train_idx)) {
+        stop("Some training individuals are missing from GRM.")
+      }
+
+      if (anyNA(target_idx)) {
+        stop(
+          "Some target individuals are missing from GRM in year ",
+          target_year
+        )
+      }
+
+
+      # Rectangle of relationships:
+      #
+      # training individuals x target individuals
+      relatedness <- grm[
+        train_idx,
+        target_idx,
+        drop = FALSE
+      ]
+
+      relatedness_values <- as.vector(
+        relatedness
+      )
+
+
+      data.frame(
+        target_year = target_year,
+
+        n_target = length(target_ids),
+
+        mean_relatedness = mean(
+          relatedness_values,
+          na.rm = TRUE
+        ),
+
+        sd_relatedness = sd(
+          relatedness_values,
+          na.rm = TRUE
+        ),
+
+        var_relatedness = var(
+          relatedness_values,
+          na.rm = TRUE
+        ),
+
+        precision_relatedness =
+          1 / var(
+            relatedness_values,
+            na.rm = TRUE
+          )
+      )
+    }
+  )
+
+
+  dplyr::bind_rows(results)
+}
+
+
+extract_pairwise_relatedness <- function(
+    pheno_data,
+    grm,
+    train_years,
+    target_year,
+    unseen_only = TRUE
+) {
+
+  # ---------------------------------------------------------------------------
+  # Training birds and IDs
+  # ---------------------------------------------------------------------------
+
+  split <- make_training_split(
+    pheno_data = pheno_data,
+    train_years = train_years
+  )
+
+  training_ids <- unique(
+    pheno_data$id1[
+      split$train_rows
+    ]
+  )
+
+  training_birds <- split$training_birds
+
+
+  # ---------------------------------------------------------------------------
+  # Target birds and IDs
+  # ---------------------------------------------------------------------------
+
+  target_data <- pheno_data |>
+    dplyr::filter(
+      year_num == target_year
+    ) |>
+    dplyr::distinct(
+      ringnr,
+      id1
+    )
+
+  if (unseen_only) {
+    target_data <- target_data |>
+      dplyr::filter(
+        !(ringnr %in% training_birds)
+      )
+  }
+
+  if (nrow(target_data) == 0) {
+    stop(
+      "No target birds found for year ", target_year
+    )
+  }
+
+
+  # ---------------------------------------------------------------------------
+  # Match to GRM rows/columns
+  # ---------------------------------------------------------------------------
+
+  train_idx <- match(
+    as.character(training_ids),
+    rownames(grm)
+  )
+
+  target_idx <- match(
+    as.character(target_data$id1),
+    colnames(grm)
+  )
+
+  if (anyNA(train_idx)) {
+    stop("Some training IDs are missing from the GRM.")
+  }
+
+  if (anyNA(target_idx)) {
+    stop("Some target IDs are missing from the GRM.")
+  }
+
+
+  # ---------------------------------------------------------------------------
+  # Extract all pairwise training-target relatedness values
+  # ---------------------------------------------------------------------------
+
+  relatedness_matrix <- grm[
+    train_idx,
+    target_idx,
+    drop = FALSE
+  ]
+
+  data.frame(
+    target_year = target_year,
+    relatedness = as.vector(relatedness_matrix)
   )
 }

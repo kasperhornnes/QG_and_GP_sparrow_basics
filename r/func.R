@@ -345,3 +345,198 @@ run_gp_cutoff <- function(
     cutoff_year = cutoff_year
   )
 }
+
+
+load_or_run <- function(file, fun, force = FALSE) {
+
+  if (file.exists(file) && !force) {
+
+    message("Loading existing object: ", file)
+
+    return(
+      readRDS(file)
+    )
+  }
+
+  message("Object not found. Running analysis...")
+
+  object <- fun()
+
+  saveRDS(
+    object,
+    file = file
+  )
+
+  message("Saved object: ", file)
+
+  object
+}
+
+make_training_split <- function(
+    pheno_data,
+    train_years
+) {
+
+  # ---------------------------------------------------------------------------
+  # 1. Check input
+  # ---------------------------------------------------------------------------
+
+  if (missing(train_years) || length(train_years) == 0) {
+    stop("train_years must contain at least one year.")
+  }
+
+  requested_train_years <- sort(
+    unique(
+      as.integer(train_years)
+    )
+  )
+
+
+  # ---------------------------------------------------------------------------
+  # 2. Check which requested years actually exist
+  # ---------------------------------------------------------------------------
+
+  available_years <- sort(
+    unique(
+      pheno_data$year_num[
+        !is.na(pheno_data$year_num)
+      ]
+    )
+  )
+
+  missing_years <- setdiff(
+    requested_train_years,
+    available_years
+  )
+
+  if (length(missing_years) > 0) {
+
+    warning(
+      "These requested training years are not present in pheno_data: ",
+      paste(missing_years, collapse = ", ")
+    )
+  }
+
+
+  # Only retain years that actually exist
+  train_years <- intersect(
+    requested_train_years,
+    available_years
+  )
+
+
+  # ---------------------------------------------------------------------------
+  # 3. Logical vector defining the training observations
+  # ---------------------------------------------------------------------------
+
+  train_rows <-
+    pheno_data$year_num %in% train_years
+
+
+  if (sum(train_rows) == 0) {
+    stop("No training observations selected.")
+  }
+
+
+  # ---------------------------------------------------------------------------
+  # 4. Birds with at least one phenotype in the training data
+  # ---------------------------------------------------------------------------
+
+  training_birds <- unique(
+    pheno_data$ringnr[
+      train_rows
+    ]
+  )
+
+
+  # ---------------------------------------------------------------------------
+  # 5. Return information
+  # ---------------------------------------------------------------------------
+
+  list(
+    train_rows = train_rows,
+    train_years = train_years,
+    training_birds = training_birds,
+
+    n_training_obs = sum(train_rows),
+
+    n_training_birds = length(
+      training_birds
+    )
+  )
+}
+
+
+run_gp_training <- function(
+    pheno_data,
+    train_rows,
+    inverse_relatedness_matrix,
+    effects_vec,
+    prior,
+    verbose = TRUE,
+    control.compute.config = FALSE
+) {
+
+  # ---------------------------------------------------------------------------
+  # Check training rows
+  # ---------------------------------------------------------------------------
+
+  if (!is.logical(train_rows)) {
+    stop("train_rows must be a logical vector.")
+  }
+
+  if (length(train_rows) != nrow(pheno_data)) {
+    stop(
+      "train_rows must have length equal to nrow(pheno_data)."
+    )
+  }
+
+
+  # ---------------------------------------------------------------------------
+  # Training phenotype data only
+  # ---------------------------------------------------------------------------
+
+  data_model <- pheno_data[
+    train_rows,
+    ,
+    drop = FALSE
+  ]
+
+  data_model$y_na <- data_model$y
+
+
+  # ---------------------------------------------------------------------------
+  # INLA formula
+  # ---------------------------------------------------------------------------
+
+  inla_formula <- stats::reformulate(
+    effects_vec,
+    response = "y_na"
+  )
+
+
+  # ---------------------------------------------------------------------------
+  # Fit model
+  # ---------------------------------------------------------------------------
+
+  model <- INLA::inla(
+    inla_formula,
+    family = "gaussian",
+    data = data_model,
+    verbose = verbose,
+
+    control.compute = list(
+      config = control.compute.config
+    ),
+
+    control.family = list(
+      hyper = prior$hyperpar_var
+    )
+  )
+
+
+  list(
+    model = model,
+    data = data_model
+  )
+}

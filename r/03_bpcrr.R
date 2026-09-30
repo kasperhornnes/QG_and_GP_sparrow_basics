@@ -12,8 +12,51 @@
 # Evaluation is handled elsewhere.
 # =============================================================================
 
+make_bpcrr_effects <- function(
+    pc_prior = c(
+      "inla_default",
+      "fixed"
+    )
+) {
 
-make_bpcrr_effects <- function() {
+  pc_prior <- match.arg(
+    pc_prior
+  )
+
+
+  # ---------------------------------------------------------------------------
+  # Genomic BPCRR effect
+  # ---------------------------------------------------------------------------
+
+  if (pc_prior == "fixed") {
+
+    genomic_effect <- paste0(
+      "f(id1, ",
+      "model = \"z\", ",
+      "Z = Z_pc, ",
+      "hyper = list(",
+      "prec = list(",
+      "initial = log(1 / u_prior_var), ",
+      "fixed = TRUE",
+      ")",
+      "))"
+    )
+
+  } else {
+
+    # No hyper argument:
+    # let INLA use its default prior for the PC-effect precision
+    genomic_effect <- paste0(
+      "f(id1, ",
+      "model = \"z\", ",
+      "Z = Z_pc)"
+    )
+  }
+
+
+  # ---------------------------------------------------------------------------
+  # Full model
+  # ---------------------------------------------------------------------------
 
   c(
     "1",
@@ -30,45 +73,11 @@ make_bpcrr_effects <- function() {
     "f(id2, model = \"iid\", hyper = prior$hyperpar_var)",
     "f(day_session, model = \"iid\", hyper = prior$hyperpar_var)",
 
-    # Genomic breeding value using PCs
-    paste0(
-      "f(id1, ",
-      "model = \"z\", ",
-      "Z = Z_pc, ",
-      "hyper = list(",
-      "prec = list(",
-      "initial = log(1 / u_prior_var), ",
-      "fixed = TRUE",
-      ")",
-      "))"
-    )
+    # Genomic effect
+    genomic_effect
   )
 }
 
-
-# =============================================================================
-# Temporal training split
-# =============================================================================
-
-make_temporal_split_bpcrr <- function(
-    pheno_data,
-    cutoff_year
-) {
-
-  train_rows <- pheno_data$year_num <= cutoff_year
-
-  if (sum(train_rows) == 0) {
-    stop(
-      "No training observations available for cutoff year ",
-      cutoff_year
-    )
-  }
-
-  list(
-    cutoff_year = cutoff_year,
-    train_rows = train_rows
-  )
-}
 
 
 # =============================================================================
@@ -94,27 +103,34 @@ make_temporal_prior_bpcrr <- function(
 
 
 # =============================================================================
-# Fit BPCRR for one cutoff year
+# Fit BPCRR for a temporal scenario
 # =============================================================================
-
 fit_temporal_bpcrr <- function(
     pheno_data,
     pcs,
-    cutoff_year,
+    train_years,
     n_pcs = 1000,
-    varA_prior = 5.2 * 0.3,
+    varA_prior = NULL,
+    pc_prior = c(
+      "inla_default",
+      "fixed"
+    ),
     verbose = TRUE,
     control.compute.config = FALSE,
     num.threads = 8
 ) {
 
+  pc_prior <- match.arg(
+    pc_prior
+  )
+
   # ---------------------------------------------------------------------------
-  # 1. Temporal split
+  # 1. Define training data
   # ---------------------------------------------------------------------------
 
-  split <- make_temporal_split_bpcrr(
+  split <- make_training_split(
     pheno_data = pheno_data,
-    cutoff_year = cutoff_year
+    train_years = train_years
   )
 
 
@@ -152,6 +168,10 @@ fit_temporal_bpcrr <- function(
   # 4. Fixed ridge prior for PC effects
   # ---------------------------------------------------------------------------
 
+  # ---------------------------------------------------------------------------
+  # 4. Prior for PC effects
+  # ---------------------------------------------------------------------------
+
   pc_variances <- apply(
     Z_pc,
     2,
@@ -162,15 +182,34 @@ fit_temporal_bpcrr <- function(
     pc_variances
   )
 
-  u_prior_var <-
-    varA_prior / total_pc_variance
+
+  if (pc_prior == "fixed") {
+
+    if (is.null(varA_prior)) {
+
+      stop(
+        "When pc_prior = 'fixed', ",
+        "you must supply varA_prior."
+      )
+    }
+
+    u_prior_var <-
+      varA_prior / total_pc_variance
+
+  } else {
+
+    # Not used when INLA estimates the PC-effect precision
+    u_prior_var <- NA_real_
+  }
 
 
   # ---------------------------------------------------------------------------
   # 5. Model effects
   # ---------------------------------------------------------------------------
 
-  effects_vec <- make_bpcrr_effects()
+  effects_vec <- make_bpcrr_effects(
+    pc_prior = pc_prior
+  )
 
 
   # ---------------------------------------------------------------------------
@@ -220,13 +259,27 @@ fit_temporal_bpcrr <- function(
   fit <- list(
     model = model,
     data = data_model,
-    cutoff_year = cutoff_year,
+
+    train_rows = split$train_rows,
+    train_years = split$train_years,
+    training_birds = split$training_birds,
+
+    n_training_obs = split$n_training_obs,
+    n_training_birds = split$n_training_birds,
+
+    last_training_year = max(
+      split$train_years
+    ),
+
     n_pcs = n_pcs,
+    pc_prior = pc_prior,
     varA_prior = varA_prior,
     u_prior_var = u_prior_var,
     Z_pc = Z_pc,
+
     method = "BPCRR"
   )
+
 
   fit
 }

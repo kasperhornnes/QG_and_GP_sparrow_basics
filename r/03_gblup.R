@@ -44,23 +44,6 @@ make_gblup_effects <- function() {
 
 #making temporal trainging and testing splits
 
-make_temporal_split <- function(
-    pheno_data,
-    cutoff_year
-) {
-
-  train_rows <- pheno_data$year_num <= cutoff_year
-
-  # Basic checks
-  if (sum(train_rows) == 0) {
-    stop("No training observations available for cutoff year ", cutoff_year)
-  }
-
-  list(
-    cutoff_year = cutoff_year,
-    train_rows = train_rows
-  )
-}
 
 make_temporal_prior <- function(
     pheno_data,
@@ -79,28 +62,26 @@ make_temporal_prior <- function(
   )
 }
 
-
-
 fit_temporal_gblup <- function(
     pheno_data,
     inverse_relatedness_matrix,
-    cutoff_year,
+    train_years,
     verbose = TRUE,
     control.compute.config = FALSE
 ) {
 
   # ---------------------------------------------------------------------------
-  # 1. Temporal split
+  # 1. Define training data
   # ---------------------------------------------------------------------------
 
-  split <- make_temporal_split(
+  split <- make_training_split(
     pheno_data = pheno_data,
-    cutoff_year = cutoff_year
+    train_years = train_years
   )
 
 
   # ---------------------------------------------------------------------------
-  # 2. Prior based only on training data
+  # 2. Prior based only on training phenotypes
   # ---------------------------------------------------------------------------
 
   prior <- make_temporal_prior(
@@ -120,9 +101,9 @@ fit_temporal_gblup <- function(
   # 4. Fit GBLUP
   # ---------------------------------------------------------------------------
 
-  fit <- run_gp_cutoff(
+  fit <- run_gp_training(
     pheno_data = pheno_data,
-    cutoff_year = cutoff_year,
+    train_rows = split$train_rows,
     inverse_relatedness_matrix = inverse_relatedness_matrix,
     effects_vec = effects_vec,
     prior = prior,
@@ -135,8 +116,19 @@ fit_temporal_gblup <- function(
   # 5. Store information about the experiment
   # ---------------------------------------------------------------------------
 
-  fit$cutoff_year <- cutoff_year
+  fit$train_rows <- split$train_rows
+  fit$train_years <- split$train_years
+  fit$training_birds <- split$training_birds
+
+  fit$n_training_obs <- split$n_training_obs
+  fit$n_training_birds <- split$n_training_birds
+
+  fit$last_training_year <- max(
+    split$train_years
+  )
+
+  fit$method <- "GBLUP"
+
 
   fit
 }
-

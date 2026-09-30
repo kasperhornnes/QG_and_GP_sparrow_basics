@@ -14,9 +14,9 @@
 # This file is specific to GRM-based models such as GBLUP.
 # =============================================================================
 
-
 make_analysis_grm <- function(
     prepared,
+    bfile = NULL,
     ncores = 8,
     mem = 8 * 6000
 ) {
@@ -31,21 +31,47 @@ make_analysis_grm <- function(
   response <- prepared$response
   sys_name <- prepared$sys_name
 
-  analysis_inds <- unique(pheno_data$ringnr)
+  analysis_inds <- unique(
+    pheno_data$ringnr
+  )
 
 
   # ---------------------------------------------------------------------------
-  # 2. Create raw GRM files
+  # 2. Choose genotype data
+  # ---------------------------------------------------------------------------
+
+  if (is.null(bfile)) {
+
+    # Original QC'ed genotype data
+    bfile <- sub(
+      "\\.fam$",
+      "",
+      geno_files[2]
+    )
+
+    geno_set <- paste0(
+      sys_name,
+      "_70K"
+    )
+
+  } else {
+
+    # Supplied genotype data, e.g. LD-pruned data
+    geno_set <- paste0(
+      sys_name,
+      "_70K_LDpruned"
+    )
+  }
+
+
+  # ---------------------------------------------------------------------------
+  # 3. Create raw GRM files
   # ---------------------------------------------------------------------------
 
   grm_files <- make_raw_grm(
     analysis_inds = analysis_inds,
 
-    bfile = gsub(
-      ".{4}$",
-      "",
-      geno_files[2]
-    ),
+    bfile = bfile,
 
     frq_file = geno_files[5],
 
@@ -58,12 +84,12 @@ make_analysis_grm <- function(
     maf = qc_filters$maf,
 
     response = response,
-    geno_set = paste0(sys_name, "_70K")
+    geno_set = geno_set
   )
 
 
   # ---------------------------------------------------------------------------
-  # 3. Load GRM and compute inverse GRM
+  # 4. Load GRM and compute inverse GRM
   # ---------------------------------------------------------------------------
 
   grm_obj <- compute_grm_obj(
@@ -79,7 +105,7 @@ make_analysis_grm <- function(
 
 
   # ---------------------------------------------------------------------------
-  # 4. Basic checks / summary
+  # 5. Summary
   # ---------------------------------------------------------------------------
 
   message("GRM construction complete.")
@@ -99,13 +125,14 @@ make_analysis_grm <- function(
 
 
   # ---------------------------------------------------------------------------
-  # 5. Return GRM objects
+  # 6. Return
   # ---------------------------------------------------------------------------
 
   list(
     grm = grm_obj$grm,
     inv_grm = grm_obj$inv_grm,
     add_val = grm_obj$add_val,
-    grm_files = grm_files
+    grm_files = grm_files,
+    bfile = bfile
   )
 }
